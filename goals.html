@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="icon" href="data:," />
+    <title>Stream Goals Overlay</title>
+    <style>
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ============ WIDGET ============ */
+      .widget {
+        position: fixed;
+        top: 12px;
+        left: 14px;
+        width: min(600px, calc(100vw - 28px));
+      }
+
+      .box {
+        background: rgba(0, 0, 0, 0.92);
+        border-top: 4px solid #ff8000;
+      }
+
+      /* ============ LAST FOLLOWER CHIP ============ */
+      .last-follower {
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 8px 16px;
+        margin-bottom: 8px;
+      }
+      .last-follower.show { display: flex; }
+      .last-follower .lf-label {
+        color: #ffc400;
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        white-space: nowrap;
+      }
+      .last-follower .lf-name {
+        color: #ffffff;
+        font-size: 19px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* ============ SLIDE STAGE ============ */
+      .stage {
+        position: relative;
+        height: 96px;
+      }
+      .slide {
+        position: absolute;
+        inset: 0;
+        padding: 12px 18px 14px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.8s ease;
+      }
+      .slide.active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .slide-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .slide-label {
+        font-size: 21px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        white-space: nowrap;
+      }
+      .slide-count {
+        color: #ffffff;
+        font-size: 40px;
+        font-weight: 900;
+        line-height: 1;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .track {
+        margin-top: 12px;
+        height: 12px;
+        background: #3c3c3c;
+      }
+      .fill {
+        height: 100%;
+        width: 0%;
+        transition: width 0.8s ease;
+      }
+
+      .c-youtube { color: #ff0000; }
+      .c-kick    { color: #53fc18; }
+      .c-twitch  { color: #a76aff; }
+      .c-watch   { color: #ffaa00; }
+      .bg-youtube { background: #ff0000; }
+      .bg-kick    { background: #53fc18; }
+      .bg-twitch  { background: #a76aff; }
+      .bg-watch   { background: #ffaa00; }
+
+      /* ============ NEW FOLLOWER / SUB POP ============ */
+      .pop {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        background: rgba(0, 0, 0, 0.95);
+        border-top: 4px solid #ff8000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.35s ease;
+        z-index: 5;
+      }
+      .pop.show { opacity: 1; }
+      .pop-main {
+        color: #ffffff;
+        font-size: 34px;
+        font-weight: 900;
+        letter-spacing: 1px;
+        line-height: 1.05;
+      }
+      .pop-platform {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: 2px;
+      }
+
+      /* Narrow preview widths (e.g. checking the link on a phone):
+         shrink the type so label and count still fit on one row.
+         The 1920x1080 stream size above is untouched. */
+      @media (max-width: 640px) {
+        .slide { padding: 10px 12px 12px; }
+        .slide-label { font-size: 14px; letter-spacing: 0.5px; }
+        .slide-count { font-size: 24px; }
+        .track { margin-top: 10px; }
+        .stage { height: 76px; }
+        .pop-main { font-size: 22px; }
+        .pop-platform { font-size: 14px; }
+        .last-follower .lf-label { font-size: 12px; }
+        .last-follower .lf-name { font-size: 15px; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .slide, .pop, .fill { transition-duration: 0.01s; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="widget" id="widget">
+      <!-- Last follower chip (hidden until a name is set in CONFIG) -->
+      <div class="box last-follower" id="lastFollower">
+        <span class="lf-label">LAST FOLLOWER</span>
+        <span class="lf-name" id="lastFollowerName"></span>
+      </div>
+
+      <!-- Rotating goal slides -->
+      <div class="stage" id="stage">
+        <div class="box slide" data-platform="youtube">
+          <div class="slide-row">
+            <span class="slide-label c-youtube">YOUTUBE SUB GOAL</span>
+            <span class="slide-count" data-count></span>
+          </div>
+          <div class="track"><div class="fill bg-youtube" data-fill></div></div>
+        </div>
+
+        <div class="box slide" data-platform="twitch">
+          <div class="slide-row">
+            <span class="slide-label c-twitch">TWITCH FOLLOW GOAL</span>
+            <span class="slide-count" data-count></span>
+          </div>
+          <div class="track"><div class="fill bg-twitch" data-fill></div></div>
+        </div>
+
+        <div class="box slide" data-platform="kick">
+          <div class="slide-row">
+            <span class="slide-label c-kick">KICK FOLLOW GOAL</span>
+            <span class="slide-count" data-count></span>
+          </div>
+          <div class="track"><div class="fill bg-kick" data-fill></div></div>
+        </div>
+
+        <div class="box slide" data-platform="watch">
+          <div class="slide-row">
+            <span class="slide-label c-watch">YOUTUBE WATCH HOURS</span>
+            <span class="slide-count" data-count></span>
+          </div>
+          <div class="track"><div class="fill bg-watch" data-fill></div></div>
+        </div>
+
+        <!-- Pop flash when a count goes up -->
+        <div class="pop" id="pop" aria-hidden="true">
+          <div class="pop-main" id="popMain">NEW FOLLOWER!</div>
+          <div class="pop-platform" id="popPlatform">KICK</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* ================================================================
+         CONFIG — edit these numbers to update the overlay.
+         Counts are the current totals. Goals are the targets.
+         lastFollower: put the newest follower's name here to show
+         the chip at the top; leave "" to hide the chip.
+         ================================================================ */
+      var CONFIG = {
+        ytSubs: 1032,
+        ytSubsGoal: 1100,
+        kick: 16,
+        kickGoal: 25,
+        twitch: 320,
+        twitchGoal: 350,
+        watch: 1334,
+        watchGoal: 4000,
+        lastFollower: ""
+      };
+
+      var PLATFORMS = {
+        youtube: { countKey: "ytSubs", goalKey: "ytSubsGoal", name: "YOUTUBE", color: "#ff0000", popText: "NEW SUB!" },
+        kick:    { countKey: "kick",   goalKey: "kickGoal",   name: "KICK",    color: "#53fc18", popText: "NEW FOLLOWER!" },
+        twitch:  { countKey: "twitch", goalKey: "twitchGoal", name: "TWITCH",  color: "#a76aff", popText: "NEW FOLLOWER!" },
+        watch:   { countKey: "watch",  goalKey: "watchGoal",  name: "YOUTUBE", color: "#ffaa00", popText: "NEW WATCH HOURS!" }
+      };
+
+      var state = {
+        ytSubs: CONFIG.ytSubs,
+        kick: CONFIG.kick,
+        twitch: CONFIG.twitch,
+        watch: CONFIG.watch
+      };
+
+      function fmt(n) {
+        return Number(n).toLocaleString("en-US");
+      }
+
+      function renderSlide(platform) {
+        var meta = PLATFORMS[platform];
+        var slide = document.querySelector('.slide[data-platform="' + platform + '"]');
+        if (!slide) return;
+        var count = state[meta.countKey];
+        var goal = CONFIG[meta.goalKey];
+        slide.querySelector("[data-count]").textContent = fmt(count) + " / " + fmt(goal);
+        var pct = goal > 0 ? Math.min(100, (count / goal) * 100) : 0;
+        slide.querySelector("[data-fill]").style.width = pct + "%";
+      }
+
+      function renderAll() {
+        Object.keys(PLATFORMS).forEach(renderSlide);
+      }
+
+      /* ---------- Last follower chip ---------- */
+      (function initLastFollower() {
+        var name = (CONFIG.lastFollower || "").trim();
+        if (!name) return;
+        document.getElementById("lastFollowerName").textContent = name;
+        document.getElementById("lastFollower").classList.add("show");
+      })();
+
+      /* ---------- Slide rotation: one at a time, crossfade ---------- */
+      var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+      var current = 0;
+      var SLIDE_MS = 30000;
+
+      function showSlide(i) {
+        slides.forEach(function (s, idx) {
+          s.classList.toggle("active", idx === i);
+        });
+      }
+      showSlide(0);
+      setInterval(function () {
+        current = (current + 1) % slides.length;
+        showSlide(current);
+      }, SLIDE_MS);
+
+      /* ---------- Pop flash when a count goes up ---------- */
+      var popEl = document.getElementById("pop");
+      var popMain = document.getElementById("popMain");
+      var popPlatform = document.getElementById("popPlatform");
+      var popTimer = null;
+
+      function showPop(platform) {
+        var meta = PLATFORMS[platform];
+        popMain.textContent = meta.popText;
+        popPlatform.textContent = meta.name;
+        popPlatform.style.color = meta.color;
+        popEl.classList.add("show");
+        if (popTimer) clearTimeout(popTimer);
+        popTimer = setTimeout(function () {
+          popEl.classList.remove("show");
+        }, 5000);
+      }
+
+      function setCount(platform, newValue) {
+        var meta = PLATFORMS[platform];
+        var key = meta.countKey;
+        var oldValue = state[key];
+        if (typeof newValue !== "number" || isNaN(newValue)) return;
+        state[key] = newValue;
+        renderSlide(platform);
+        if (newValue > oldValue) {
+          showPop(platform);
+        }
+      }
+
+      /* ---------- Live Kick follower count (every 60 seconds) ---------- */
+      function checkKick() {
+        fetch("https://kick.com/api/v2/channels/unclean-soap")
+          .then(function (res) {
+            if (!res.ok) throw new Error("Kick API " + res.status);
+            return res.json();
+          })
+          .then(function (data) {
+            var n = null;
+            if (typeof data.followers_count === "number") n = data.followers_count;
+            else if (typeof data.followersCount === "number") n = data.followersCount;
+            if (n !== null) setCount("kick", n);
+          })
+          .catch(function () {
+            /* Fetch failed — CONFIG numbers stay on screen. */
+          });
+      }
+
+      renderAll();
+      checkKick();
+      setInterval(checkKick, 60000);
+    </script>
+  </body>
+</html>
