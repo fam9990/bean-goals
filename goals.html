@@ -268,13 +268,46 @@
         Object.keys(PLATFORMS).forEach(renderSlide);
       }
 
-      /* ---------- Last follower chip ---------- */
+      /* ---------- Last follower chip (live feed) ---------- */
+      var lfEl = document.getElementById("lastFollower");
+      var lfNameEl = document.getElementById("lastFollowerName");
+      var lfLabelEl = lfEl.querySelector(".lf-label");
+      var LF_COLORS = { twitch: "#a76aff", kick: "#53fc18", youtube: "#ff0000" };
+
+      function showLastFollower(name, platform) {
+        var n = (name || "").trim();
+        if (!n) { lfEl.classList.remove("show"); return; }
+        lfNameEl.textContent = n;
+        var c = LF_COLORS[platform] || "#ffc400";
+        lfEl.style.borderTopColor = c;
+        lfLabelEl.style.color = c;
+        lfEl.classList.add("show");
+      }
+
       (function initLastFollower() {
-        var name = (CONFIG.lastFollower || "").trim();
-        if (!name) return;
-        document.getElementById("lastFollowerName").textContent = name;
-        document.getElementById("lastFollower").classList.add("show");
+        if ((CONFIG.lastFollower || "").trim()) {
+          showLastFollower(CONFIG.lastFollower, "");
+        }
       })();
+
+      /* Feed: lastfollow.json sits next to this page and holds the
+         newest follow across platforms: {name, platform, at}.
+         Checked every 60 seconds; the newest name takes the chip. */
+      function checkLastFollower() {
+        fetch("lastfollow.json?t=" + Date.now())
+          .then(function (res) {
+            if (!res.ok) throw new Error("lastfollow " + res.status);
+            return res.json();
+          })
+          .then(function (d) {
+            if (d && d.name) showLastFollower(d.name, d.platform);
+          })
+          .catch(function () {
+            /* Feed missing/unreachable — keep whatever is on screen. */
+          });
+      }
+      checkLastFollower();
+      setInterval(checkLastFollower, 60000);
 
       /* ---------- Slide rotation: one at a time, crossfade ---------- */
       var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
