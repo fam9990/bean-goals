@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BeanBot YouTube sign-in</title>
+<style>
+  body { background:#111; color:#fff; font-family:sans-serif; text-align:center; padding-top:60px; }
+  #code { font-size:20px; word-break:break-all; background:#222; border:2px solid #ff8000;
+          border-radius:10px; padding:16px; margin:24px auto; max-width:700px; }
+  .big { font-size:30px; }
+</style>
+</head>
+<body>
+<div class="big">✅ Almost done</div>
+<p>BeanBot's sign-in code is below. Muse picks it up from this page's address.</p>
+<div id="code">waiting…</div>
+<p>You can close this page.</p>
+<script>
+  var q = new URLSearchParams(location.search);
+  var c = q.get('code');
+  var e = q.get('error');
+  document.getElementById('code').textContent = c ? c : (e ? ('Google said: ' + e) : 'No code in the address.');
+</script>
+</body>
+</html>
