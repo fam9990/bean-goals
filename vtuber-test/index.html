@@ -107,7 +107,7 @@ function placeBean() {
   bean.scale.setScalar(S);
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(state.pitch, state.yaw, state.roll, 'YXZ'));
   bean.quaternion.copy(q);
-  const anchor = new THREE.Vector3(EYE_MODEL.x * S, EYE_MODEL.y * S, 0).applyQuaternion(q);
+  const anchor = new THREE.Vector3(EYE_MODEL.x * S, EYE_MODEL.y * S, 0.34 * S).applyQuaternion(q);
   bean.position.set(state.x - anchor.x, state.y - anchor.y, 0);
   bean.visible = state.seen;
   if (patchMesh) patchMesh.visible = state.seen;
@@ -137,7 +137,7 @@ function drawDebug() {
   if (bean) {
     const S = state.s;
     for (const [hx, hy] of [[-0.143, 0.494], [0.233, 0.494], [0.051, 0.088]]) {
-      const v = new THREE.Vector3(hx * S, hy * S, 0.30 * S).applyQuaternion(bean.quaternion).add(bean.position);
+      const v = new THREE.Vector3(hx * S, hy * S, 0.34 * S).applyQuaternion(bean.quaternion).add(bean.position);
       dot({ x: v.x + innerWidth / 2, y: innerHeight / 2 - v.y }, 'red', 7);
     }
   }
@@ -155,7 +155,7 @@ function updateFromPoints(eyeA, eyeB, nose) {
   if (eyeDist < 20) return null;
   const roll = Math.atan2(dy, dx);                       // screen-space, y down
   const yaw = THREE.MathUtils.clamp(((nose.x - midX) / eyeDist) * 1.35, -0.7, 0.7);
-  const pitch = THREE.MathUtils.clamp(((nose.y - midY) / eyeDist - 1.0) * 1.1, -0.4, 0.5);
+  const pitch = THREE.MathUtils.clamp(((nose.y - midY) / eyeDist - 0.55) * 1.1, -0.4, 0.5);
   const S = eyeDist * HOLE_WIDEN / EYE_SPACING_MODEL;
   const wx = midX - innerWidth / 2, wy = innerHeight / 2 - midY;
   const k = state.seen ? 0.35 : 1;
