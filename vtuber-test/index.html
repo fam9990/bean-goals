@@ -24,6 +24,7 @@
 <video id="cam" autoplay playsinline muted style="display:none"></video>
 <img id="demoImg" src="./demo-face.jpg" style="display:none" alt="">
 <canvas id="gl"></canvas>
+<canvas id="dbg" style="position:fixed;inset:0;width:100%;height:100%;z-index:6;pointer-events:none"></canvas>
 <div id="startBox">
   <h1>Bean Test</h1>
   <p>Hold the phone up so your face is in the middle of the screen. You will see only the bean. Your real eyes and mouth show through the holes. Nothing else of you shows.</p>
@@ -36,6 +37,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const DEMO = new URLSearchParams(location.search).has('demo');
+const DEBUG = new URLSearchParams(location.search).has('debug');
+let lastFace = null;
 const statusEl = document.getElementById('status');
 const video = document.getElementById('cam');
 const demoImg = document.getElementById('demoImg');
@@ -112,7 +115,35 @@ function placeBean() {
 function loop() {
   placeBean();
   renderer.render(scene, camera);
+  if (DEBUG) drawDebug();
   requestAnimationFrame(loop);
+}
+const dbgCtx = document.getElementById('dbg').getContext('2d');
+function drawDebug() {
+  const c = dbgCtx.canvas;
+  if (c.width !== innerWidth) { c.width = innerWidth; c.height = innerHeight; }
+  dbgCtx.clearRect(0, 0, c.width, c.height);
+  if (!lastFace) { dbgCtx.fillStyle = '#fff'; dbgCtx.font = '24px sans-serif'; dbgCtx.fillText('DEBUG: no face seen yet', 20, 40); return; }
+  const { eyeA, eyeB, nose, mouth, cx, cy, eyeDist } = lastFace;
+  // camera preview, top-left
+  const pw = 260, ph = pw * (video.videoHeight || 1) / (video.videoWidth || 1);
+  if (video.videoWidth) dbgCtx.drawImage(video, 8, 8, pw, ph);
+  dbgCtx.strokeStyle = '#fff'; dbgCtx.strokeRect(8, 8, pw, ph);
+  const dot = (p, col, r) => { dbgCtx.fillStyle = col; dbgCtx.beginPath(); dbgCtx.arc(p.x, p.y, r || 9, 0, 7); dbgCtx.fill(); };
+  dot(eyeA, 'lime'); dot(eyeB, 'lime'); dot(nose, 'cyan'); dot(mouth, 'magenta');
+  dbgCtx.strokeStyle = 'yellow'; dbgCtx.lineWidth = 3;
+  dbgCtx.beginPath(); dbgCtx.arc(cx, cy, eyeDist * 1.02, 0, 7); dbgCtx.stroke();
+  // bean hole centres projected to screen (red)
+  if (bean) {
+    const S = state.s;
+    for (const [hx, hy] of [[-0.143, 0.494], [0.233, 0.494], [0.051, 0.088]]) {
+      const v = new THREE.Vector3(hx * S, hy * S, 0.30 * S).applyQuaternion(bean.quaternion).add(bean.position);
+      dot({ x: v.x + innerWidth / 2, y: innerHeight / 2 - v.y }, 'red', 7);
+    }
+  }
+  dbgCtx.fillStyle = '#fff'; dbgCtx.font = '22px sans-serif';
+  dbgCtx.fillText('DEBUG video ' + video.videoWidth + 'x' + video.videoHeight + ' eyeDist ' + Math.round(eyeDist), 8, ph + 36);
+  dbgCtx.fillText('green=tracker eyes  red=bean holes', 8, ph + 64);
 }
 
 // ---------- face points -> bean state (all in screen px, y down) ----------
@@ -201,7 +232,7 @@ async function startLive() {
   });
   video.srcObject = stream;
   await video.play();
-  say('Live. Only the bean shows. Look left and right. Talk.');
+  say(DEBUG ? 'Check page is on. Take a screenshot and send it to Muse.' : 'Live. Only the bean shows. Look left and right. Talk.');
 
   let lastTime = -1;
   function tick() {
@@ -217,7 +248,10 @@ async function startLive() {
         const cR = avgPt(pt(33), pt(133)), cL = avgPt(pt(362), pt(263));
         const eyes = [cR, cL].sort((p, q) => p.x - q.x);
         const f = updateFromPoints(eyes[0], eyes[1], pt(1));
-        if (f) drawPatch(video, vw, vh, f.cx, f.cy, f.eyeDist, true);
+        if (f) {
+          lastFace = { eyeA: eyes[0], eyeB: eyes[1], nose: pt(1), mouth: avgPt(pt(13), pt(14)), cx: f.cx, cy: f.cy, eyeDist: f.eyeDist };
+          drawPatch(video, vw, vh, f.cx, f.cy, f.eyeDist, true);
+        }
       }
     }
     requestAnimationFrame(tick);
