@@ -24,7 +24,7 @@
 <video id="cam" autoplay playsinline muted style="display:none"></video>
 <img id="demoImg" src="./demo-face.jpg" style="display:none" alt="">
 <canvas id="gl"></canvas>
-<canvas id="dbg" style="position:fixed;inset:0;width:100%;height:100%;z-index:6;pointer-events:none"></canvas>
+<canvas id="overlay" style="position:fixed;inset:0;width:100%;height:100%;z-index:6;pointer-events:none"></canvas>
 <div id="startBox">
   <h1>Bean Test</h1>
   <p>Hold the phone up so your face is in the middle of the screen. You will see only the bean. Your real eyes and mouth show through the holes. Nothing else of you shows.</p>
@@ -118,7 +118,7 @@ function loop() {
   if (DEBUG) drawDebug();
   requestAnimationFrame(loop);
 }
-const dbgCtx = document.getElementById('dbg').getContext('2d');
+const dbgCtx = document.getElementById('overlay').getContext('2d');
 function drawDebug() {
   const c = dbgCtx.canvas;
   if (c.width !== innerWidth) { c.width = innerWidth; c.height = innerHeight; }
