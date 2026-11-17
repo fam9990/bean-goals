@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Bean VTuber — Phone Test</title>
 <style>
-  html, body { margin:0; padding:0; height:100%; background:#111; overflow:hidden; font-family: sans-serif; }
-  #cam, #demoImg { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; }
-  #cam { transform: scaleX(-1); }
+  html, body { margin:0; padding:0; height:100%; background:#14161a; overflow:hidden; font-family: sans-serif; }
   #gl { position:fixed; inset:0; width:100%; height:100%; }
   #startBox { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(0,0,0,.82); color:#fff; z-index:10; text-align:center; padding:24px; }
   #startBox h1 { font-size:26px; margin:0 0 10px; }
@@ -28,7 +26,7 @@
 <canvas id="gl"></canvas>
 <div id="startBox">
   <h1>Bean Test</h1>
-  <p>Hold the phone up so your face is in the middle of the screen. The bean sits on your face. Look left and right. Talk. Your real eyes and mouth show through the holes.</p>
+  <p>Hold the phone up so your face is in the middle of the screen. You will see only the bean. Your real eyes and mouth show through the holes. Nothing else of you shows.</p>
   <button id="startBtn">Start the test</button>
 </div>
 <div id="status">Not started yet.</div>
@@ -45,7 +43,8 @@ const say = (t) => { statusEl.textContent = t; };
 
 // ---------- three.js scene ----------
 const canvas = document.getElementById('gl');
-const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: false, antialias: true });
+renderer.setClearColor(0x14161a, 1);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 let scene, camera, bean = null;
 function sizeRenderer() {
@@ -62,7 +61,38 @@ const rim = new THREE.DirectionalLight(0xffd9a8, 0.5); rim.position.set(-1, 0.3,
 sizeRenderer();
 addEventListener('resize', sizeRenderer);
 
-const EYE_MODEL = { x: 0.045, y: 0.494 };     // eye-line anchor in model units
+// ---------- face patch: his camera, masked to a circle around his face,
+// sitting BEHIND the bean. The bean covers it everywhere except the
+// holes, so only his eyes and mouth ever show. ----------
+const patchCanvas = document.createElement('canvas');
+const patchCtx = patchCanvas.getContext('2d');
+let patchTex = null, patchMesh = null;
+function makePatch() {
+  patchCanvas.width = innerWidth; patchCanvas.height = innerHeight;
+  patchTex = new THREE.CanvasTexture(patchCanvas);
+  patchTex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.MeshBasicMaterial({ map: patchTex, transparent: true });
+  patchMesh = new THREE.Mesh(new THREE.PlaneGeometry(innerWidth, innerHeight), mat);
+  patchMesh.position.set(0, 0, -100);
+  scene.add(patchMesh);
+}
+function drawPatch(src, srcW, srcH, faceCx, faceCy, eyeDist, mirror) {
+  const w = patchCanvas.width, h = patchCanvas.height;
+  const scale = Math.max(w / srcW, h / srcH);
+  const dw = srcW * scale, dh = srcH * scale;
+  const ox = (w - dw) / 2, oy = (h - dh) / 2;
+  patchCtx.clearRect(0, 0, w, h);
+  patchCtx.save();
+  if (mirror) { patchCtx.translate(w, 0); patchCtx.scale(-1, 1); }
+  patchCtx.beginPath();
+  patchCtx.arc(mirror ? w - faceCx : faceCx, faceCy, eyeDist * 1.02, 0, Math.PI * 2);
+  patchCtx.clip();
+  patchCtx.drawImage(src, ox, oy, dw, dh);
+  patchCtx.restore();
+  if (patchTex) patchTex.needsUpdate = true;
+}
+
+const EYE_MODEL = { x: 0.045, y: 0.494 };   // eye-line anchor in model units
 const EYE_SPACING_MODEL = 0.376;            // distance between eye holes
 const HOLE_WIDEN = 1.05;                    // holes sit a touch wider than his eyes (face-tested)
 
@@ -77,6 +107,7 @@ function placeBean() {
   const anchor = new THREE.Vector3(EYE_MODEL.x * S, EYE_MODEL.y * S, 0).applyQuaternion(q);
   bean.position.set(state.x - anchor.x, state.y - anchor.y, 0);
   bean.visible = state.seen;
+  if (patchMesh) patchMesh.visible = state.seen;
 }
 function loop() {
   placeBean();
@@ -85,11 +116,12 @@ function loop() {
 }
 
 // ---------- face points -> bean state (all in screen px, y down) ----------
+// also returns the face-patch centre (a touch below the eyes) and eye distance
 function updateFromPoints(eyeA, eyeB, nose) {
   const midX = (eyeA.x + eyeB.x) / 2, midY = (eyeA.y + eyeB.y) / 2;
   const dx = eyeB.x - eyeA.x, dy = eyeB.y - eyeA.y;
   const eyeDist = Math.hypot(dx, dy);
-  if (eyeDist < 20) return;
+  if (eyeDist < 20) return null;
   const roll = Math.atan2(dy, dx);                       // screen-space, y down
   const yaw = THREE.MathUtils.clamp(((nose.x - midX) / eyeDist) * 1.35, -0.7, 0.7);
   const pitch = THREE.MathUtils.clamp(((nose.y - midY) / eyeDist - 1.0) * 1.1, -0.4, 0.5);
@@ -103,6 +135,7 @@ function updateFromPoints(eyeA, eyeB, nose) {
   state.pitch += ((-pitch) - state.pitch) * k;
   state.roll += ((-roll) - state.roll) * k;
   state.seen = true;
+  return { cx: midX, cy: midY + eyeDist * 0.5, eyeDist };
 }
 
 // cover-fit mapping: media pixel coords -> screen px
@@ -125,6 +158,7 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     const gltf = await new GLTFLoader().parseAsync(bytes.buffer, '');
     bean = gltf.scene;
     scene.add(bean);
+    makePatch();
     loop();
     if (DEMO) startDemo(); else await startLive();
   } catch (e) {
@@ -133,8 +167,7 @@ document.getElementById('startBtn').addEventListener('click', async () => {
 });
 
 function startDemo() {
-  demoImg.style.display = 'block';
-  say('Demo mode: the bean is on your photo. It looks left and right on its own.');
+  say('Demo mode: only the bean shows, with the eyes and mouth from the photo.');
   const W0 = 1920, H0 = 1080;
   const eyeR = { x: 1298, y: 507 }, eyeL = { x: 1620, y: 517 }, nose0 = { x: 1467, y: 835 };
   function frame(t) {
@@ -142,7 +175,8 @@ function startDemo() {
     const sway = Math.sin(t / 1400);
     const nose = { x: nose0.x + sway * 95, y: nose0.y + Math.sin(t / 900) * 14 };
     const a = map(eyeR.x, eyeR.y), b = map(eyeL.x, eyeL.y), n = map(nose.x, nose.y);
-    updateFromPoints(a, b, n);
+    const f = updateFromPoints(a, b, n);
+    if (f) drawPatch(demoImg, W0, H0, f.cx, f.cy, f.eyeDist, false);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -167,8 +201,7 @@ async function startLive() {
   });
   video.srcObject = stream;
   await video.play();
-  video.style.display = 'block';
-  say('Live. Look left and right. Talk. The bean should follow you.');
+  say('Live. Only the bean shows. Look left and right. Talk.');
 
   let lastTime = -1;
   function tick() {
@@ -183,7 +216,8 @@ async function startLive() {
         const pt = (i) => map(vw - lm[i].x * vw, lm[i].y * vh);
         const cR = avgPt(pt(33), pt(133)), cL = avgPt(pt(362), pt(263));
         const eyes = [cR, cL].sort((p, q) => p.x - q.x);
-        updateFromPoints(eyes[0], eyes[1], pt(1));
+        const f = updateFromPoints(eyes[0], eyes[1], pt(1));
+        if (f) drawPatch(video, vw, vh, f.cx, f.cy, f.eyeDist, true);
       }
     }
     requestAnimationFrame(tick);
